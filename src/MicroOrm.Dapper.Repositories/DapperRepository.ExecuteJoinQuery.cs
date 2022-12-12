@@ -6,6 +6,7 @@ using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
 using MicroOrm.Dapper.Repositories.Extensions;
@@ -24,7 +25,7 @@ namespace MicroOrm.Dapper.Repositories
         /// </summary>
         protected virtual IEnumerable<TEntity> ExecuteJoinQuery<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(
             SqlQuery sqlQuery,
-            IDbTransaction transaction,
+            IDbTransaction? transaction,
             params Expression<Func<TEntity, object>>[] includes)
         {
             if (!SqlGenerator.KeySqlProperties.Any())
@@ -40,14 +41,14 @@ namespace MicroOrm.Dapper.Repositories
             {
                 var prop = ExpressionHelper.GetPropertyName(s);
                 var childProp = type.GetProperty(prop);
-                
-                if (childProp == null) 
+
+                if (childProp == null)
                     continue;
-                
+
                 childProperties.Add(childProp);
                 var childType = childProp.PropertyType.IsGenericType ? childProp.PropertyType.GenericTypeArguments[0] : childProp.PropertyType;
                 var properties = childType.FindClassPrimitiveProperties();
-               
+
                 childKeyProperties.AddRange(properties.Where(p => p.GetCustomAttributes<KeyAttribute>().Any()));
             }
 
@@ -110,16 +111,26 @@ namespace MicroOrm.Dapper.Repositories
             return lookup.Values;
         }
 
+        /// <summary>
+        ///     Execute Join query
+        /// </summary>
+        protected virtual Task<IEnumerable<TEntity>> ExecuteJoinQueryAsync<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(
+            SqlQuery sqlQuery,
+            IDbTransaction? transaction,
+            params Expression<Func<TEntity, object>>[] includes)
+        {
+            return ExecuteJoinQueryAsync<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(sqlQuery, transaction, default, includes);
+        }
 
         /// <summary>
         ///     Execute Join query
         /// </summary>
         protected virtual async Task<IEnumerable<TEntity>> ExecuteJoinQueryAsync<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(
             SqlQuery sqlQuery,
-            IDbTransaction transaction,
+            IDbTransaction? transaction,
+            CancellationToken cancellationToken,
             params Expression<Func<TEntity, object>>[] includes)
         {
-            
             if (!SqlGenerator.KeySqlProperties.Any())
                 throw new NotSupportedException("Join doesn't support without [Key] attribute");
 
@@ -132,67 +143,73 @@ namespace MicroOrm.Dapper.Repositories
             {
                 var prop = ExpressionHelper.GetPropertyName(s);
                 var childProp = type.GetProperty(prop);
-                
-                if (childProp == null) 
+
+                if (childProp == null)
                     continue;
-                
+
                 childProperties.Add(childProp);
                 var childType = childProp.PropertyType.IsGenericType ? childProp.PropertyType.GenericTypeArguments[0] : childProp.PropertyType;
                 var properties = childType.FindClassPrimitiveProperties();
                 childKeyProperties.AddRange(properties.Where(p => p.GetCustomAttributes<KeyAttribute>().Any()));
             }
-            
+
             if (!childKeyProperties.Any())
                 throw new NotSupportedException("Join doesn't support without [Key] attribute");
 
             var lookup = new Dictionary<object, TEntity>();
-            const bool buffered = true;
+            const CommandFlags buffered = CommandFlags.Buffered;
 
             var spiltOn = string.Join(",", childKeyProperties.Select(q => q.Name));
 
             switch (includes.Length)
             {
                 case 1:
-                    await Connection.QueryAsync<TEntity, TChild1, TEntity>(sqlQuery.GetSql(), (entity, child1) =>
+                    await Connection.QueryAsync<TEntity, TChild1, TEntity>(new CommandDefinition(sqlQuery.GetSql(),
+                            sqlQuery.Param, transaction, flags: buffered, cancellationToken: cancellationToken), (entity, child1) =>
                             EntityJoinMapping<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(lookup, keyProperties, childKeyProperties, childProperties, entity, child1),
-                        sqlQuery.Param, transaction, buffered, spiltOn);
+                        spiltOn);
                     break;
 
                 case 2:
-                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TEntity>(sqlQuery.GetSql(), (entity, child1, child2) =>
+                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TEntity>(new CommandDefinition(sqlQuery.GetSql(),
+                            sqlQuery.Param, transaction, flags: buffered, cancellationToken: cancellationToken), (entity, child1, child2) =>
                             EntityJoinMapping<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(lookup, keyProperties, childKeyProperties, childProperties, entity, child1,
                                 child2),
-                        sqlQuery.Param, transaction, buffered, spiltOn);
+                        spiltOn);
                     break;
 
                 case 3:
-                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TEntity>(sqlQuery.GetSql(), (entity, child1, child2, child3) =>
+                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TEntity>(new CommandDefinition(sqlQuery.GetSql(),
+                            sqlQuery.Param, transaction, flags: buffered, cancellationToken: cancellationToken), (entity, child1, child2, child3) =>
                             EntityJoinMapping<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(lookup, keyProperties, childKeyProperties, childProperties, entity, child1,
                                 child2, child3),
-                        sqlQuery.Param, transaction, buffered, spiltOn);
+                        spiltOn);
                     break;
 
                 case 4:
-                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TChild4, TEntity>(sqlQuery.GetSql(), (entity, child1, child2, child3, child4) =>
+                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TChild4, TEntity>(new CommandDefinition(sqlQuery.GetSql(),
+                            sqlQuery.Param, transaction, flags: buffered, cancellationToken: cancellationToken), (entity, child1, child2, child3, child4) =>
                             EntityJoinMapping<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(lookup, keyProperties, childKeyProperties, childProperties, entity, child1,
                                 child2, child3, child4),
-                        sqlQuery.Param, transaction, buffered, spiltOn);
+                        spiltOn);
                     break;
 
                 case 5:
-                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TChild4, TChild5, TEntity>(sqlQuery.GetSql(),
+                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TChild4, TChild5, TEntity>(new CommandDefinition(sqlQuery.GetSql(),
+                            sqlQuery.Param, transaction, flags: buffered, cancellationToken: cancellationToken),
                         (entity, child1, child2, child3, child4, child5) =>
                             EntityJoinMapping<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(lookup, keyProperties, childKeyProperties, childProperties, entity, child1,
                                 child2, child3, child4, child5),
-                        sqlQuery.Param, transaction, buffered, spiltOn);
+                        spiltOn);
                     break;
 
                 case 6:
-                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TChild4, TChild5, TChild6, TEntity>(sqlQuery.GetSql(),
+                    await Connection.QueryAsync<TEntity, TChild1, TChild2, TChild3, TChild4, TChild5, TChild6, TEntity>(new CommandDefinition(sqlQuery.GetSql(),
+                            sqlQuery.Param, transaction, flags: buffered, cancellationToken: cancellationToken),
                         (entity, child1, child2, child3, child4, child5, child6) =>
                             EntityJoinMapping<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(lookup, keyProperties, childKeyProperties, childProperties, entity, child1,
                                 child2, child3, child4, child5, child6),
-                        sqlQuery.Param, transaction, buffered, spiltOn);
+                        spiltOn);
                     break;
 
                 default:
@@ -204,9 +221,9 @@ namespace MicroOrm.Dapper.Repositories
 
 
         private static TEntity EntityJoinMapping<TChild1, TChild2, TChild3, TChild4, TChild5, TChild6>(IDictionary<object, TEntity> lookup, PropertyInfo[] keyProperties,
-            IList<PropertyInfo> childKeyProperties, IList<PropertyInfo> childProperties, TEntity entity, params object[] childs)
+            IList<PropertyInfo> childKeyProperties, IList<PropertyInfo> childProperties, TEntity entity, params object?[] childs)
         {
-            var compositeKeyProperty = string.Join("|", keyProperties.Select(q => q.GetValue(entity).ToString()));
+            var compositeKeyProperty = string.Join("|", keyProperties.Select(q => q.GetValue(entity)?.ToString()));
 
             if (!lookup.TryGetValue(compositeKeyProperty, out var target))
                 lookup.Add(compositeKeyProperty, target = entity);
@@ -219,7 +236,7 @@ namespace MicroOrm.Dapper.Repositories
 
                 if (childProperty.PropertyType.IsGenericType)
                 {
-                    var list = (IList) childProperty.GetValue(target);
+                    var list = (IList?)childProperty.GetValue(target);
                     if (list == null)
                     {
                         switch (i)

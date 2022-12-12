@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
-using MicroOrm.Dapper.Repositories.Config;
 using MicroOrm.Dapper.Repositories.SqlGenerator;
 
 namespace MicroOrm.Dapper.Repositories
@@ -16,13 +16,13 @@ namespace MicroOrm.Dapper.Repositories
         where TEntity : class
     {
         /// <inheritdoc />
-        public bool BulkUpdate(IEnumerable<TEntity> instances)
+        public virtual bool BulkUpdate(IEnumerable<TEntity> instances)
         {
             return BulkUpdate(instances, null);
         }
 
         /// <inheritdoc />
-        public bool BulkUpdate(IEnumerable<TEntity> instances, IDbTransaction transaction)
+        public virtual bool BulkUpdate(IEnumerable<TEntity> instances, IDbTransaction? transaction)
         {
             if (SqlGenerator.Provider == SqlProvider.MSSQL)
             {
@@ -31,14 +31,19 @@ namespace MicroOrm.Dapper.Repositories
 
                 var properties = SqlGenerator.SqlProperties.ToList();
 
-                int exceededTimes = (int) Math.Ceiling(totalInstances * properties.Count / 2100d);
+                int exceededTimes = (int)Math.Ceiling(totalInstances * properties.Count / 2099d);
                 if (exceededTimes > 1)
                 {
                     int maxAllowedInstancesPerBatch = totalInstances / exceededTimes;
 
                     for (int i = 0; i <= exceededTimes; i++)
                     {
-                        var items = instances.Skip(i * maxAllowedInstancesPerBatch).Take(maxAllowedInstancesPerBatch);
+                        var skips = i * maxAllowedInstancesPerBatch;
+
+                        if (skips >= totalInstances)
+                            break;
+
+                        var items = instances.Skip(skips).Take(maxAllowedInstancesPerBatch);
                         var msSqlQueryResult = SqlGenerator.GetBulkUpdate(items);
                         count += Connection.Execute(msSqlQueryResult.GetSql(), msSqlQueryResult.Param, transaction);
                     }
@@ -53,13 +58,25 @@ namespace MicroOrm.Dapper.Repositories
         }
 
         /// <inheritdoc />
-        public Task<bool> BulkUpdateAsync(IEnumerable<TEntity> instances)
+        public virtual Task<bool> BulkUpdateAsync(IEnumerable<TEntity> instances)
         {
-            return BulkUpdateAsync(instances, null);
+            return BulkUpdateAsync(instances, null, CancellationToken.None);
         }
 
         /// <inheritdoc />
-        public async Task<bool> BulkUpdateAsync(IEnumerable<TEntity> instances, IDbTransaction transaction)
+        public virtual Task<bool> BulkUpdateAsync(IEnumerable<TEntity> instances, CancellationToken cancellationToken)
+        {
+            return BulkUpdateAsync(instances, null, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public virtual Task<bool> BulkUpdateAsync(IEnumerable<TEntity> instances, IDbTransaction? transaction)
+        {
+            return BulkUpdateAsync(instances, transaction, CancellationToken.None);
+        }
+
+        /// <inheritdoc />
+        public virtual async Task<bool> BulkUpdateAsync(IEnumerable<TEntity> instances, IDbTransaction? transaction, CancellationToken cancellationToken)
         {
             if (SqlGenerator.Provider == SqlProvider.MSSQL)
             {
@@ -68,16 +85,22 @@ namespace MicroOrm.Dapper.Repositories
 
                 var properties = SqlGenerator.SqlProperties.ToList();
 
-                int exceededTimes = (int) Math.Ceiling(totalInstances * properties.Count / 2100d);
+                int exceededTimes = (int)Math.Ceiling(totalInstances * properties.Count / 2099d);
                 if (exceededTimes > 1)
                 {
                     int maxAllowedInstancesPerBatch = totalInstances / exceededTimes;
 
                     for (int i = 0; i <= exceededTimes; i++)
                     {
-                        var items = instances.Skip(i * maxAllowedInstancesPerBatch).Take(maxAllowedInstancesPerBatch);
+                        var skips = i * maxAllowedInstancesPerBatch;
+
+                        if (skips >= totalInstances)
+                            break;
+
+                        var items = instances.Skip(skips).Take(maxAllowedInstancesPerBatch);
                         var msSqlQueryResult = SqlGenerator.GetBulkUpdate(items);
-                        count += await Connection.ExecuteAsync(msSqlQueryResult.GetSql(), msSqlQueryResult.Param, transaction);
+                        count += await Connection.ExecuteAsync(new CommandDefinition(msSqlQueryResult.GetSql(), msSqlQueryResult.Param, transaction,
+                            cancellationToken: cancellationToken));
                     }
 
                     return count > 0;
@@ -85,7 +108,7 @@ namespace MicroOrm.Dapper.Repositories
             }
 
             var queryResult = SqlGenerator.GetBulkUpdate(instances);
-            var result = await Connection.ExecuteAsync(queryResult.GetSql(), queryResult.Param, transaction) > 0;
+            var result = await Connection.ExecuteAsync(new CommandDefinition(queryResult.GetSql(), queryResult.Param, transaction, cancellationToken: cancellationToken)) > 0;
             return result;
         }
     }

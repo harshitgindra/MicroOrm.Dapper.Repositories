@@ -3,7 +3,6 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using MicroOrm.Dapper.Repositories.Attributes;
 using MicroOrm.Dapper.Repositories.Attributes.Joins;
-using MicroOrm.Dapper.Repositories.Attributes.LogicalDelete;
 
 namespace MicroOrm.Dapper.Repositories.Tests.Classes
 {
@@ -20,7 +19,7 @@ namespace MicroOrm.Dapper.Repositories.Tests.Classes
         public List<User> Users { get; set; }
 
         public string CityId { get; set; }
-        
+
         [InnerJoin("Cities", "CityId", "Identifier")]
         public City City { get; set; }
     }

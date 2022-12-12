@@ -4,7 +4,6 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using MicroOrm.Dapper.Repositories.Attributes;
-using MicroOrm.Dapper.Repositories.Extensions;
 
 namespace MicroOrm.Dapper.Repositories.SqlGenerator
 {
@@ -21,9 +20,8 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
             if (!properties.Any())
                 throw new ArgumentException("Can't update without [Key]");
 
-            if (HasUpdatedAt)
+            if (HasUpdatedAt && UpdatedAtProperty.GetCustomAttribute<UpdatedAtAttribute>() is { } attribute)
             {
-                var attribute = UpdatedAtProperty.GetCustomAttribute<UpdatedAtAttribute>();
                 var offset = attribute.TimeKind == DateTimeKind.Local
                     ? new DateTimeOffset(DateTime.Now)
                     : new DateTimeOffset(DateTime.UtcNow);
@@ -42,7 +40,7 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
                 .Append(TableName)
                 .Append(" ");
 
-            if (includes?.Length > 0)
+            if (includes.Length > 0)
             {
                 var joinsBuilder = AppendJoinToUpdate(entity, query, includes);
                 query.SqlBuilder.Append("SET ");
@@ -58,13 +56,13 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
             query.SqlBuilder.Append(" WHERE ");
 
             query.SqlBuilder.Append(string.Join(" AND ", KeySqlProperties.Where(p => !p.IgnoreUpdate)
-                .Select(p => $"{TableName}.{p.ColumnName} = @{entity.GetType().Name}{p.PropertyName}")));
+                .Select(p => $"{TableName}.{p.ColumnName} = {ParameterSymbol}{entity.GetType().Name}{p.PropertyName}")));
 
-            if (query.Param == null || !(query.Param is Dictionary<string, object> parameters))
-                parameters = new Dictionary<string, object>();
+            if (query.Param == null || !(query.Param is Dictionary<string, object?> parameters))
+                parameters = new Dictionary<string, object?>();
 
             foreach (var metadata in properties.Concat(KeySqlProperties))
-                parameters.Add($"{entity.GetType().Name}{metadata.PropertyName}", entity.GetType().GetProperty(metadata.PropertyName).GetValue(entity, null));
+                parameters.Add($"{entity.GetType().Name}{metadata.PropertyName}", entity.GetType().GetProperty(metadata.PropertyName)?.GetValue(entity, null));
 
             query.SetParam(parameters);
 
@@ -72,14 +70,13 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
         }
 
         /// <inheritdoc />
-        public virtual SqlQuery GetUpdate(Expression<Func<TEntity, bool>> predicate, TEntity entity, params Expression<Func<TEntity, object>>[] includes)
+        public virtual SqlQuery GetUpdate(Expression<Func<TEntity, bool>>? predicate, TEntity entity, params Expression<Func<TEntity, object>>[] includes)
         {
             var properties = SqlProperties.Where(p =>
                 !KeySqlProperties.Any(k => k.PropertyName.Equals(p.PropertyName, StringComparison.OrdinalIgnoreCase)) && !p.IgnoreUpdate).ToArray();
 
-            if (HasUpdatedAt)
+            if (HasUpdatedAt && UpdatedAtProperty.GetCustomAttribute<UpdatedAtAttribute>() is { } attribute)
             {
-                var attribute = UpdatedAtProperty.GetCustomAttribute<UpdatedAtAttribute>();
                 var offset = attribute.TimeKind == DateTimeKind.Local
                     ? new DateTimeOffset(DateTime.Now)
                     : new DateTimeOffset(DateTime.UtcNow);
@@ -98,7 +95,7 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
                 .Append(TableName)
                 .Append(" ");
 
-            if (includes?.Length > 0)
+            if (includes.Length > 0)
             {
                 var joinsBuilder = AppendJoinToUpdate(entity, query, includes);
                 query.SqlBuilder.Append("SET ");
@@ -116,20 +113,20 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
 
             AppendWherePredicateQuery(query, predicate, QueryType.Update);
 
-            var parameters = (Dictionary<string, object>)query.Param;
+            var parameters = (Dictionary<string, object?>)query.Param!;
             foreach (var metadata in properties)
-                parameters.Add($"{entity.GetType().Name}{metadata.PropertyName}", entity.GetType().GetProperty(metadata.PropertyName).GetValue(entity, null));
+                parameters.Add($"{entity.GetType().Name}{metadata.PropertyName}", entity.GetType().GetProperty(metadata.PropertyName)?.GetValue(entity, null));
 
             return query;
         }
 
         /// <inheritdoc />
-        public virtual SqlQuery GetUpdate(Expression<Func<TEntity, bool>> predicate, object setPropertyObj)
+        public virtual SqlQuery GetUpdate(Expression<Func<TEntity, bool>>? predicate, object setPropertyObj)
         {
             var setProperties = setPropertyObj.GetType().GetProperties();
             var properties = SqlProperties
                 .Where(p => !KeySqlProperties.Any(k => k.PropertyName.Equals(p.PropertyName, StringComparison.OrdinalIgnoreCase)) && !p.IgnoreUpdate
-                 && setProperties.Any(k => k.Name.Equals(p.PropertyName, StringComparison.OrdinalIgnoreCase)))
+                    && setProperties.Any(k => k.Name.Equals(p.PropertyName, StringComparison.OrdinalIgnoreCase)))
                 .ToArray();
 
             var query = new SqlQuery();
@@ -142,28 +139,31 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
             query.SqlBuilder.Append(" ");
             AppendWherePredicateQuery(query, predicate, QueryType.Update);
 
-            var parameters = (Dictionary<string, object>)query.Param;
+            var parameters = (Dictionary<string, object?>)query.Param!;
             foreach (var metadata in properties)
             {
                 var setProp = setProperties.FirstOrDefault(p => p.Name.Equals(metadata.PropertyName, StringComparison.OrdinalIgnoreCase));
-                if (setProp == null) continue;
+                if (setProp == null)
+                    continue;
                 parameters.Add($"{typeof(TEntity).Name}{metadata.PropertyName}", setProp.GetValue(setPropertyObj));
             }
+
             return query;
         }
 
         /// <inheritdoc />
-        public virtual SqlQuery GetUpdate(Expression<Func<TEntity, bool>> predicate, Dictionary<string, object> setPropertyDict)
+        public virtual SqlQuery GetUpdate(Expression<Func<TEntity, bool>>? predicate, Dictionary<string, object> setPropertyDict)
         {
-            var propNameExceptItems = setPropertyDict.Keys.Except(SqlProperties.Select(p => p.PropertyName));
-            if (propNameExceptItems.Any())
+            var propNameExceptItems = setPropertyDict.Keys.Except(SqlProperties.Select(p => p.PropertyName)).ToArray();
+            if (propNameExceptItems.Length > 0)
             {
-                string keys = string.Join(",", propNameExceptItems.Select(p => p));
+                string keys = string.Join(",", propNameExceptItems);
                 throw new ArgumentException(string.Concat(nameof(setPropertyDict), "content error detail:", $" [{keys}] not equal entity column name"));
             }
+
             var properties = SqlProperties
                 .Where(p => !KeySqlProperties.Any(k => k.PropertyName.Equals(p.PropertyName, StringComparison.OrdinalIgnoreCase)) && !p.IgnoreUpdate
-                 && setPropertyDict.Any(k => k.Key.Equals(p.PropertyName, StringComparison.OrdinalIgnoreCase)))
+                    && setPropertyDict.Any(k => k.Key.Equals(p.PropertyName, StringComparison.OrdinalIgnoreCase)))
                 .ToArray();
 
             var query = new SqlQuery();
@@ -176,29 +176,30 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
             query.SqlBuilder.Append(" ");
             AppendWherePredicateQuery(query, predicate, QueryType.Update);
 
-            var parameters = (Dictionary<string, object>)query.Param;
+            var parameters = (Dictionary<string, object?>)query.Param!;
             foreach (var metadata in properties)
             {
                 var value = setPropertyDict.FirstOrDefault(p => p.Key.Equals(metadata.PropertyName, StringComparison.OrdinalIgnoreCase)).Value;
                 parameters.Add($"{typeof(TEntity).Name}{metadata.PropertyName}", value);
             }
+
             return query;
         }
 
-        private string GetFieldsUpdate(string tableName, IEnumerable<SqlPropertyMetadata> properties, bool useMarks)
+        private string GetFieldsUpdate(string? tableName, IEnumerable<SqlPropertyMetadata> properties, bool useMarks)
         {
             if (Provider == SqlProvider.SQLite)
             {
                 //***
-                //*** Building query update query for sqlite
+                //*** Building update query for sqlite
                 //***
                 return string.Join(", ", properties
-                    .Select(p => $"{(useMarks ? p.ColumnName : p.CleanColumnName)} = @{p.PropertyInfo.ReflectedType.Name}{p.PropertyName}"));
+                    .Select(p => $"{(useMarks ? p.ColumnName : p.CleanColumnName)} = {ParameterSymbol}{p.PropertyInfo.ReflectedType?.Name}{p.PropertyName}"));
             }
             else
             {
                 return string.Join(", ", properties
-                    .Select(p => $"{tableName}.{(useMarks ? p.ColumnName : p.CleanColumnName)} = @{p.PropertyInfo.ReflectedType.Name}{p.PropertyName}"));
+                    .Select(p => $"{tableName}.{(useMarks ? p.ColumnName : p.CleanColumnName)} = {ParameterSymbol}{p.PropertyInfo.ReflectedType?.Name}{p.PropertyName}"));
             }
         }
     }

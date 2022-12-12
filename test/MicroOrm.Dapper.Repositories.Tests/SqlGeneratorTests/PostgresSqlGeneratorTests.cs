@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-
 using MicroOrm.Dapper.Repositories.SqlGenerator;
 using MicroOrm.Dapper.Repositories.SqlGenerator.Filters;
 using MicroOrm.Dapper.Repositories.Tests.Classes;
-
 using Xunit;
 
 namespace MicroOrm.Dapper.Repositories.Tests.SqlGeneratorTests
@@ -34,7 +32,8 @@ namespace MicroOrm.Dapper.Repositories.Tests.SqlGeneratorTests
         {
             ISqlGenerator<User> userSqlGenerator = new SqlGenerator<User>(_sqlConnector, true);
             var sqlQuery = userSqlGenerator.GetCount(x => x.PhoneId == 1, user => user.AddressId);
-            Assert.Equal("SELECT COUNT(DISTINCT \"Users\".\"AddressId\") FROM \"Users\" WHERE (\"Users\".\"PhoneId\" = @PhoneId_p0) AND \"Users\".\"Deleted\" != 1", sqlQuery.GetSql());
+            Assert.Equal("SELECT COUNT(DISTINCT \"Users\".\"AddressId\") FROM \"Users\" WHERE (\"Users\".\"PhoneId\" = @PhoneId_p0) AND \"Users\".\"Deleted\" != 1",
+                sqlQuery.GetSql());
         }
 
         [Fact]
@@ -62,6 +61,20 @@ namespace MicroOrm.Dapper.Repositories.Tests.SqlGeneratorTests
 
             var sqlQuery = sqlGenerator.GetSelectAll(x => x.Identifier == Guid.Empty, filterData);
             Assert.Equal("SELECT Cities.Identifier, Cities.Name FROM Cities WHERE Cities.Identifier = @Identifier_p0 ORDER BY Name ASC", sqlQuery.GetSql());
+        }
+
+        [Fact]
+        public void SelectOrderByWithTableIdentifier_QuoMarks()
+        {
+            ISqlGenerator<City> sqlGenerator = new SqlGenerator<City>(_sqlConnector, true);
+            var filterData = new FilterData();
+            var data = filterData.OrderInfo ?? new OrderInfo();
+            data.Columns = new List<string> { "Cities.Name" };
+            data.Direction = OrderInfo.SortDirection.ASC;
+            filterData.OrderInfo = data;
+
+            var sqlQuery = sqlGenerator.GetSelectAll(x => x.Identifier == Guid.Empty, filterData);
+            Assert.Equal("SELECT \"Cities\".\"Identifier\", \"Cities\".\"Name\" FROM \"Cities\" WHERE \"Cities\".\"Identifier\" = @Identifier_p0 ORDER BY \"Cities\".\"Name\" ASC", sqlQuery.GetSql());
         }
 
         [Fact]
@@ -100,14 +113,14 @@ namespace MicroOrm.Dapper.Repositories.Tests.SqlGeneratorTests
             ISqlGenerator<Phone> userSqlGenerator = new SqlGenerator<Phone>(_sqlConnector);
             var phones = new List<Phone>
             {
-                new Phone { Id = 10, IsActive = true, Number = "111" },
-                new Phone { Id = 10, IsActive = false, Number = "222" }
+                new Phone { Id = 10, IsActive = true, PNumber = "111" },
+                new Phone { Id = 10, IsActive = false, PNumber = "222" }
             };
 
             var sqlQuery = userSqlGenerator.GetBulkUpdate(phones);
 
-            Assert.Equal("UPDATE DAB.Phones SET Number = @Number0, IsActive = @IsActive0 WHERE Id = @Id0; " +
-                         "UPDATE DAB.Phones SET Number = @Number1, IsActive = @IsActive1 WHERE Id = @Id1", sqlQuery.GetSql());
+            Assert.Equal("UPDATE DAB.Phones SET PNumber = @PNumber0, IsActive = @IsActive0 WHERE Id = @Id0; " +
+                         "UPDATE DAB.Phones SET PNumber = @PNumber1, IsActive = @IsActive1 WHERE Id = @Id1", sqlQuery.GetSql());
         }
 
         [Fact]
@@ -116,14 +129,14 @@ namespace MicroOrm.Dapper.Repositories.Tests.SqlGeneratorTests
             ISqlGenerator<Phone> userSqlGenerator = new SqlGenerator<Phone>(_sqlConnector, true);
             var phones = new List<Phone>
             {
-                new Phone { Id = 10, IsActive = true, Number = "111" },
-                new Phone { Id = 10, IsActive = false, Number = "222" }
+                new Phone { Id = 10, IsActive = true, PNumber = "111" },
+                new Phone { Id = 10, IsActive = false, PNumber = "222" }
             };
 
             var sqlQuery = userSqlGenerator.GetBulkUpdate(phones);
 
-            Assert.Equal("UPDATE \"DAB\".\"Phones\" SET \"Number\" = @Number0, \"IsActive\" = @IsActive0 WHERE \"Id\" = @Id0; " +
-                         "UPDATE \"DAB\".\"Phones\" SET \"Number\" = @Number1, \"IsActive\" = @IsActive1 WHERE \"Id\" = @Id1", sqlQuery.GetSql());
+            Assert.Equal("UPDATE \"DAB\".\"Phones\" SET \"PNumber\" = @PNumber0, \"IsActive\" = @IsActive0 WHERE \"Id\" = @Id0; " +
+                         "UPDATE \"DAB\".\"Phones\" SET \"PNumber\" = @PNumber1, \"IsActive\" = @IsActive1 WHERE \"Id\" = @Id1", sqlQuery.GetSql());
         }
     }
 }

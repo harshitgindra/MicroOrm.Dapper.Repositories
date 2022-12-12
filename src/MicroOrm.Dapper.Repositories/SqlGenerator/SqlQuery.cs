@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 
 namespace MicroOrm.Dapper.Repositories.SqlGenerator
 {
@@ -34,12 +34,12 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
         /// <summary>
         ///     Gets the param
         /// </summary>
-        public object Param { get; private set; }
+        public object? Param { get; private set; }
 
         /// <summary>
         ///     Gets the SQL.
         /// </summary>
-        public string GetSql()
+        public virtual string GetSql()
         {
             return SqlBuilder.ToString().Trim();
         }
@@ -48,7 +48,7 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
         ///     Set alternative param
         /// </summary>
         /// <param name="param">The param.</param>
-        public void SetParam(object param)
+        public virtual void SetParam(object param)
         {
             Param = param;
         }

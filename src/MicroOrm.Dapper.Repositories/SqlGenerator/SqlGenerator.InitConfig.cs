@@ -1,4 +1,6 @@
+using Dapper;
 using System;
+using System.Data;
 
 namespace MicroOrm.Dapper.Repositories.SqlGenerator
 {
@@ -20,20 +22,12 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
                         break;
 
                     case SqlProvider.MySQL:
-
                         InitMetaData("`", "`");
-
                         break;
 
                     case SqlProvider.PostgreSQL:
-
                         InitMetaData("\"", "\"");
-
                         break;
-                    case SqlProvider.SQLite:
-                        //SQLite doesn't use it.
-                        break;
-                    
                     default:
                         throw new ArgumentOutOfRangeException(nameof(Provider));
                 }
@@ -43,6 +37,13 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
                 TableName = GetTableNameWithSchemaPrefix(TableName, TableSchema);
                 foreach (var propertyMetadata in SqlJoinProperties)
                     propertyMetadata.TableName = GetTableNameWithSchemaPrefix(propertyMetadata.TableName, propertyMetadata.TableSchema);
+            }
+
+            // set ParameterSymbol with : and mapping Boolean type to Int
+            if (Provider == SqlProvider.Oracle)
+            {
+                ParameterSymbol = ":";
+                SqlMapper.AddTypeMap(typeof(bool), DbType.Int32);
             }
         }
 
@@ -60,7 +61,8 @@ namespace MicroOrm.Dapper.Repositories.SqlGenerator
             {
                 propertyMetadata.TableName = GetTableNameWithSchemaPrefix(propertyMetadata.TableName, propertyMetadata.TableSchema, startQuotationMark, endQuotationMark);
                 propertyMetadata.ColumnName = startQuotationMark + propertyMetadata.CleanColumnName + endQuotationMark;
-                propertyMetadata.TableAlias = string.IsNullOrEmpty(propertyMetadata.TableAlias) ? string.Empty : startQuotationMark + propertyMetadata.TableAlias + endQuotationMark;
+                propertyMetadata.TableAlias =
+                    string.IsNullOrEmpty(propertyMetadata.TableAlias) ? string.Empty : startQuotationMark + propertyMetadata.TableAlias + endQuotationMark;
             }
 
             if (IdentitySqlProperty != null)
